@@ -103,3 +103,196 @@ match="^Presenca invalida$"
 
 MS volta a **100%**.
 
+## Exercício 2: Desconto progressivo
+
+### a) Cobertura de ramos e MS da suíte inicial
+
+Suíte inicial: `assert total_com_desconto([10, 20, 30, 40, 50]) > 0`.
+
+![alt text](image-8.png)
+
+![alt text](image-9.png)
+
+Cobertura de ramos: **100%**. Mutantes gerados: 16, mortos: 4, vivos: 12. MS = 4/16 = **25%**.
+
+**O que os dois números dizem:** a cobertura só mede que o código foi *executado*, não que o resultado foi *verificado*. O assert `> 0` aceita quase qualquer valor, então a suíte passa por todas as linhas sem conferir nenhuma. O MS de 25% mostra isso.
+
+### b) Assert exato
+
+Troca feita (a entrada não mudou; a conta é 10 + 20 + 30 + 36 + 45 = 141):
+
+```python
+def test_total_exato():
+    assert total_com_desconto([10, 20, 30, 40, 50]) == 141.0
+```
+
+![alt text](image-10.png)
+
+Restam **3 vivos**, todos na linha `return round(total, 2)`. MS = 13/16 ≈ **81%**.
+
+### c) Condição que falhou em cada vivo
+
+![alt text](image-11.png)
+
+| Mutante | Mudança | Alcançar | Infectar | Propagar | Revelar |
+|---|---|---|---|---|---|
+| #13 | `round(total, None)` | sim | sim (vira `int`: 141 em vez de 141.0) | sim (é o retorno) | **não**: `141 == 141.0` é `True` |
+| #15 | `round(total, )` | sim | sim (vira `int`) | sim | **não**, mesmo motivo |
+| #16 | `round(total, 3)` | sim | **não**: `round(141.0, 3)` é `141.0`, idêntico ao original | não | não |
+
+Nos mutantes #13 e #15 o estado é alterado e chega à saída, mas o `==` do Python trata `141` e `141.0` como iguais, então o assert não **revela** a diferença. No #16 o estado nem chega a ser alterado, porque 141.0 não tem casas além da segunda: falha a condição de **infectar**.
+
+### d) Entrada acrescentada
+
+```python
+def test_preco_com_centavos_exige_arredondamento():
+    # 60 + 12.34 * 0.9 = 71.106 -> 71.11 (duas casas)
+    assert total_com_desconto([10, 20, 30, 12.34]) == 71.11
+```
+
+![alt text](image-12.png)
+
+![alt text](image-13.png)
+
+**Que tipo de preço foi preciso:** um preço com **centavos quebrados**, de modo que o total tenha mais de duas casas decimais antes de arredondar. Com isso, `round(..., 3)` dá 71.106 e `round(...)` sem o 2 dá 71, e ambos deixam de coincidir com 71.11.
+
+**MS final** = 16/16 = **100%** (antes: 4/16 = 25%).
+
+---
+
+## Exercício 3: Temperaturas da semana
+
+### a) Suíte inicial e vivos
+
+Suíte: listas `[21, 25, 19, 30, 22]`, `[18]` e `[30, 21]` com o valor exato, e lista vazia com `pytest.raises(ValueError)` sem conferir a mensagem, para as duas funções (8 testes).
+
+![alt text](image-14.png)
+
+![alt text](image-15.png)
+
+![alt text](image-16.png)
+
+Cobertura de ramos 100%, 22 mutantes, 11 mortos, 11 vivos. MS = 11/22 = **50%**.
+
+Vivos encontrados:
+
+| Mutante | Mudança |
+|---|---|
+| `maior` #2, #3, #4 | mensagem vira `None`, `"XXlista vaziaXX"`, `"LISTA VAZIA"` |
+| `maior` #7 | `temps[1:]` vira `temps[2:]` |
+| `maior` #8 | `t > m` vira `t >= m` |
+| `dia_do_maior` #2, #3, #4 | as mesmas três mensagens |
+| `dia_do_maior` #9 | `range(1, len(temps))` vira `range(len(temps))` |
+| `dia_do_maior` #11 | `range(1, len(temps))` vira `range(2, len(temps))` |
+| `dia_do_maior` #12 | `temps[i] > temps[pos]` vira `>=` |
+
+### b) Classificação dos vivos
+
+| Mutante | Classe | Justificativa |
+|---|---|---|
+| `maior` #2, #3, #4 e `dia_do_maior` #2, #3, #4 | Não equivalentes | A suíte nunca confere a mensagem; um teste com `match` distingue cada uma |
+| `maior` #7 | Não equivalente | Se o maior estiver na posição 1, ele é ignorado: `[10, 40, 20]` devolve 20 em vez de 40 |
+| `maior` #8 | **Equivalente** | `t >= m` só troca `m` por um `t` igual a ele; o valor devolvido é o mesmo para qualquer entrada |
+| `dia_do_maior` #9 | **Equivalente** | Com `i = 0` a comparação é `temps[0] > temps[0]`, sempre falsa, então `pos` nunca muda nessa volta |
+| `dia_do_maior` #11 | Não equivalente | Ignora a posição 1: `[10, 40, 20]` devolve 0 em vez de 1 |
+| `dia_do_maior` #12 | Não equivalente | Em empate devolve o último dia em vez do primeiro: `[30, 21, 30]` devolve 2 em vez de 0 |
+
+### c) Mutantes não equivalentes mortos
+
+Testes acrescentados/alterados:
+
+```python
+def test_maior_maximo_na_posicao_1():
+    assert maior([10, 40, 20]) == 40
+
+
+def test_maior_vazia():
+    with pytest.raises(ValueError, match="^lista vazia$"):
+        maior([])
+
+
+def test_dia_do_maior_maximo_na_posicao_1():
+    assert dia_do_maior([10, 40, 20]) == 1
+
+
+def test_dia_do_maior_empate_devolve_o_primeiro():
+    assert dia_do_maior([30, 21, 30]) == 0
+
+
+def test_dia_do_maior_vazia():
+    with pytest.raises(ValueError, match="^lista vazia$"):
+        dia_do_maior([])
+```
+
+![alt text](image-17.png)
+
+![alt text](image-18.png)
+
+Os dois vivos restantes são os equivalentes justificados em (b).
+
+- **MS antes** = 11/22 = **50%**
+- **MS depois** = 20/(22 − 2) = **100%**
+
+### d) Por que `>` virar `>=` é equivalente numa função e não na outra
+
+- Em **`maior`**, a função devolve o *valor* do maior. Se `t == m`, trocar `m` por `t` não muda nada, porque os dois são iguais. Nenhuma entrada distingue as duas versões: mutante equivalente.
+- Em **`dia_do_maior`**, a função devolve a *posição*. Em um empate, o `>=` atualiza `pos` para o índice do empate, e a especificação pede o **primeiro** dia com a maior temperatura. Com `[30, 21, 30]` o original devolve 0 e o mutante devolve 2: mutante não equivalente.
+
+O operador mutado é o mesmo, mas a equivalência depende do **que a função devolve** e do **que a especificação exige**.
+
+---
+
+## Exercício 4: Parcelamento
+
+### a) Suíte derivada por valor-limite
+
+Os valores de `n` vêm das fronteiras da especificação: o intervalo válido (1 a 12) e a mudança de regime dos juros (3 para 4). Os valores esperados saem da fórmula `valor * (1 + 0,02 * (n - 3)) / n`, não do código.
+
+| n | Motivo | Esperado (valor = 100) |
+|---|---|---|
+| 0 | logo abaixo do mínimo | `ValueError("parcelas invalidas")` |
+| 1 | menor válido | 100.0 |
+| 2 | sem juros | 50.0 |
+| 3 | última parcela sem juros | 33.33 |
+| 4 | primeira com juros | 100 × 1,02 / 4 = 25.5 |
+| 12 | maior válido | 100 × 1,18 / 12 = 9.83 |
+| 13 | logo acima do máximo | `ValueError("parcelas invalidas")` |
+
+```python
+@pytest.mark.parametrize("n", [0, 13])
+def test_parcelas_invalidas(n):
+    with pytest.raises(ValueError, match="^parcelas invalidas$"):
+        parcela(100, n)
+
+
+@pytest.mark.parametrize("valor, n, esperado", [
+    (100, 1, 100.0),
+    (100, 2, 50.0),
+    (100, 3, 33.33),
+    (100, 4, 25.5),
+    (100, 12, 9.83),
+])
+def test_parcela_nas_fronteiras(valor, n, esperado):
+    assert parcela(valor, n) == esperado
+```
+
+![alt text](image-19.png)
+
+### b) Cobertura de ramos e MS
+
+![alt text](image-20.png)
+
+![alt text](image-21.png)
+
+Cobertura de ramos 100%, 27 mutantes, 26 mortos, 1 vivo. MS = 26/27 ≈ **96,3%**.
+
+### c) Análise do vivo
+
+![alt text](image-22.png)
+
+O vivo é o **mutmut_9**: `if n <= 3` vira `if n < 3`.
+
+**É equivalente.** As duas versões só diferem em `n = 3`. No original, `n = 3` entra no `if` e `juros = 0`. No mutante, `n = 3` cai no `else` e `juros = 0.02 * (3 - 3) = 0`. O `juros` é o mesmo nos dois casos, então a saída é idêntica para qualquer entrada, e nenhum teste consegue matá-lo.
+
+Não foi preciso acrescentar testes. **MS final** = 26/(27 − 1) = **100%**.
+
